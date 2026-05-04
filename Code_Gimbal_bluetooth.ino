@@ -89,7 +89,7 @@ void GimbalLogic(void * pvParameters) {
 
 void setup() {
   Serial.begin(115200);
-  SerialBT.begin("Gimbal_Huy_HighSpeed"); 
+  SerialBT.begin("Gimbal_ESP32"); 
 
   ESP32PWM::allocateTimer(2);
   ESP32PWM::allocateTimer(3);
