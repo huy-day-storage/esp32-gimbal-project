@@ -32,5 +32,3 @@ Chào mừng bạn đến với dự án Gimbal 2 trục sử dụng vi điều 
 ## 📱 Kết Nối Bluetooth
 Dự án có hỗ trợ điều khiển và tinh chỉnh thông số qua Bluetooth. Bạn có thể sử dụng các ứng dụng Serial Bluetooth Terminal trên điện thoại để gửi lệnh điều chỉnh Kp, Kd trực tiếp.
 
----
-*Dự án được thực hiện bởi Huy - Học sinh trường THPT Chế Lan Viên, Quảng Trị.*
