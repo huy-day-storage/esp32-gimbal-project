@@ -17,13 +17,17 @@ Servo sRoll, sPitch;
 // --- HỆ SỐ ĐIỀU KHIỂN TỐI ƯU ---
 volatile float Kp = 0.25;      // Hệ số tỉ lệ (Phản ứng nhanh)
 volatile float Kd = 0.00;     // Hệ số đạo hàm (Giảm rung/phanh)
-volatile float deadband = 2.5; // Giảm vùng chết để nhạy hơn
-volatile int gimbalMode = 0; 
+volatile float deadband = 2.5; // Tăng giảm vùng chết để điều chỉnh độ nhạy hơn
+// --- CẤU HÌNH CÁC CHẾ ĐỘ HOẠT ĐỘNG CỦA GIMBAL ---
+// Mode 2: Chế độ Theo dõi (Follow) - Gimbal xoay chậm theo chuyển động của tay cầm.
+// Mode 1: Chế độ Khóa (Locked) - Gimbal giữ cố định góc bất kể chuyển động của khung.
+// Mode 0: Chế độ Cân bằng (Manual) - Tương tự chế độ theo dõi nhưng chuyển động nhanh và không mềm mại bằng
+volatile int gimbalMode = 0; // Mặc định bắt đầu ở chế độ cân bằng
 
 float currentServoPitch = 90.0, currentServoRoll = 90.0;
 TaskHandle_t TaskGimbal;
 
-// --- HÀM XỬ LÝ LỆNH BLUETOOTH (Thêm lệnh chỉnh Kp, Kd) ---
+// --- HÀM XỬ LÝ LỆNH BLUETOOTH ---
 void handleBluetooth() {
   if (SerialBT.available()) {
     String data = SerialBT.readStringUntil('\n');
@@ -35,7 +39,7 @@ void handleBluetooth() {
       case 'M': gimbalMode = (int)val; break;
       case 'P': Kp = val; break;  // Chỉnh Kp (VD: P0.8)
       case 'D': Kd = val; break;  // Chỉnh Kd (VD: D0.05)
-      case 'B': deadband = val; break;
+      case 'B': deadband = val; break;   // Chỉnh vùng chết (VD: B1.5)
       case 'S':
         SerialBT.printf("\nKp:%.2f | Kd:%.3f | Mode:%d\n", Kp, Kd, gimbalMode);
         break;
@@ -43,7 +47,7 @@ void handleBluetooth() {
   }
 }
 
-// --- TASK LOGIC GIMBAL (CORE 1) - TỐC ĐỘ CAO ---
+// --- TASK LOGIC GIMBAL (CORE 1) ---
 void GimbalLogic(void * pvParameters) {
   uint32_t timer = micros();
   for(;;) {
@@ -59,9 +63,7 @@ void GimbalLogic(void * pvParameters) {
     float anglePitch = kalPitch.getAngle(atan2(-ax, sqrt(ay * ay + az * az)) * 57.296, gy, dt);
 
     if (gimbalMode == 0 || gimbalMode == 2) { 
-        // THUẬT TOÁN PD: Error * Kp - Vận tốc góc * Kd
-        // Gyro (gx, gy) chính là đạo hàm tự nhiên của góc, giúp "phanh" servo
-        
+      
         if (abs(anglePitch) > deadband) {
             float targetP = anglePitch * Kp - (gy * Kd);
             currentServoPitch -= targetP;
@@ -71,18 +73,16 @@ void GimbalLogic(void * pvParameters) {
             currentServoRoll -= targetR;
         }
     } else if (gimbalMode == 1) { 
-        currentServoPitch += (90 - currentServoPitch) * 0.1; // Về trung tâm nhanh hơn
+        currentServoPitch += (90 - currentServoPitch) * 0.1; 
         currentServoRoll += (90 - currentServoRoll) * 0.1;
     }
 
     currentServoPitch = constrain(currentServoPitch, 10, 170);
     currentServoRoll  = constrain(currentServoRoll, 10, 170);
 
-    // Xuất lệnh trực tiếp, bỏ qua bộ lọc smooth gây trễ
     sRoll.write((int)currentServoRoll);
     sPitch.write((int)currentServoPitch);
 
-    // Chạy ở 500Hz (2ms) để phản hồi tức thì
     vTaskDelay(2 / portTICK_PERIOD_MS); 
   }
 }
@@ -91,10 +91,9 @@ void setup() {
   Serial.begin(115200);
   SerialBT.begin("Gimbal_Huy_HighSpeed"); 
 
-  // Cấu hình Servo tần số cao
   ESP32PWM::allocateTimer(2);
   ESP32PWM::allocateTimer(3);
-  sRoll.setPeriodHertz(100); // Tăng tần số PWM cho Servo (nếu là Servo kỹ thuật số càng tốt)
+  sRoll.setPeriodHertz(100);
   sPitch.setPeriodHertz(100);
   sRoll.attach(ROLL_PIN, 500, 2400);
   sPitch.attach(PITCH_PIN, 500, 2400);
@@ -106,7 +105,7 @@ void setup() {
   
   icm.setAccelRange(4); 
   icm.setGyroRange(500); 
-  icm.setDLPF(0); // Tắt bộ lọc nội (DLPF = 0) để giảm trễ dữ liệu xuống mức micro giây
+  icm.setDLPF(0); 
 
   // Ưu tiên Task cao nhất (Priority 2)
   xTaskCreatePinnedToCore(GimbalLogic, "GimbalTask", 4096, NULL, 2, &TaskGimbal, 1);
